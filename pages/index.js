@@ -86,7 +86,10 @@ async function callAI(system, user) {
     body: JSON.stringify({ system, user }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "API request failed");
+  if (!res.ok) {
+    const detail = Array.isArray(data.details) ? data.details.join(" / ") : "";
+    throw new Error((data.error || "API request failed") + (detail ? ` (${detail})` : ""));
+  }
   return data.text;
 }
 
@@ -163,6 +166,7 @@ export default function ProposalBuilder() {
   const [proposalError, setProposalError] = useState(null);
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef(null);
+  const submittingRef = useRef(false);
 
   const tone = getTone(toneId);
 
@@ -292,7 +296,8 @@ ${outlineSnapshot}
 
   const handleSubmit = useCallback(async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || submittingRef.current) return;
+    submittingRef.current = true;
     setError(null);
     const answerMsg = { id: uid(), role: "answer", topicId: currentTopicId, text };
     setMessages((prev) => [...prev, answerMsg]);
@@ -327,11 +332,12 @@ ${outlineSnapshot}
         { id: uid(), role: "question", topicId: nextId, isConcern: !!parsed.isConcern, text: parsed.question },
       ]);
     } catch (e) {
-      setError("応答の取得に失敗しました。もう一度送信してください。");
+      setError("応答の取得に失敗しました: " + e.message);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
-  }, [input, loading, messages, currentTopicId, outline, tone]);
+  }, [input, messages, currentTopicId, outline, tone]);
 
   const handleGenerateProposal = useCallback(async () => {
     setProposalError(null);
@@ -350,7 +356,7 @@ ${outlineSnapshot}
       const raw = await callAI(system, userPrompt);
       setProposalText(stripFences(raw));
     } catch (e) {
-      setProposalError("企画書の生成に失敗しました。もう一度お試しください。");
+      setProposalError("企画書の生成に失敗しました: " + e.message);
     } finally {
       setProposalLoading(false);
     }
